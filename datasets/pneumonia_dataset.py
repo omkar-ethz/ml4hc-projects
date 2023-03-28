@@ -58,4 +58,4 @@ class PneumoniaDataset(Dataset):
             image = self.transform(image)
         if self.label_transform:
             label = self.label_transform(label)
-        return image, label
+        return image.repeat(3,1,1), label
