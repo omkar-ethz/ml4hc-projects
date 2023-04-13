@@ -4,7 +4,7 @@ import torch
 from typing import Tuple
 
 from torch.utils.data import Dataset
-from torchvision.io import read_image
+from torchvision.io import read_image, ImageReadMode
 
 
 #Maybe try normalisation
@@ -25,11 +25,17 @@ class PneumoniaDataset(Dataset):
     The label 0 corresponds to normal image, whereas the label 1 corresponds to
     image with pneumonia.
     """
-    def __init__(self, img_dir: str, transform: torch.nn.Module = None, label_transform: torch.nn.Module = None, keep_in_memory: bool = True):
+    def __init__(self,
+                 img_dir: str,
+                 transform: torch.nn.Module = None,
+                 label_transform: torch.nn.Module = None,
+                 keep_in_memory: bool = True,
+                 use_rgb: bool = True):
         self.img_dir = img_dir
         self.transform = transform
         self.label_transform = label_transform
         self.keep_in_memory = keep_in_memory
+        self.use_rgb = use_rgb
 
         normal_image_names = list(os.listdir(os.path.join(img_dir, "NORMAL")))
         normal_image_paths = [os.path.join(img_dir, "NORMAL", name) for name in normal_image_names]
@@ -41,7 +47,12 @@ class PneumoniaDataset(Dataset):
         if self.keep_in_memory:
             self.images = []
             for path in self.image_paths:
-                image = read_image(path) / 255.
+                if not self.use_rgb:
+                    image = read_image(path, ImageReadMode.GRAY)
+                else:
+                    image = read_image(path)
+                image = image / 255.
+                image = self.transform(image)
                 self.images.append(image)
 
     def __len__(self) -> int:
@@ -49,13 +60,16 @@ class PneumoniaDataset(Dataset):
 
     def __getitem__(self, idx) -> Tuple[torch.Tensor, int]:
         if self.keep_in_memory:
-            image = self.images[idx] / 255.
+            image = self.images[idx]
         else:
-            image = read_image(os.path.join(self.img_dir, self.image_paths[idx])) / 255.
-
+            image = self.transform(read_image(os.path.join(self.img_dir, self.image_paths[idx])) / 255.)
         label = self.labels[idx]
-        if self.transform:
-            image = self.transform(image)
+        # if self.transform:
+        #     image = self.transform(image)
         if self.label_transform:
             label = self.label_transform(label)
-        return image.repeat(3,1,1), label
+
+        if self.use_rgb and image.shape[0] == 1:
+            image = image.repeat(3,1,1)
+
+        return image, label
