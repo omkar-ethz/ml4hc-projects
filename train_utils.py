@@ -52,18 +52,22 @@ def validate(model, valloader, train_args):
 
 
 
-def train(model, trainloader, valloader, train_args):
+def train(model, trainloader, valloader, train_args, take_last_model = False):
     
     device = train_args["device"]
     model.to(device)
 
     optimizer = Adam(model.parameters(), **train_args["optimizer_args"])
+    has_scheduler = False
     if train_args["scheduler"] == "LinearLR":
         scheduler = LinearLR(optimizer=optimizer,total_iters=train_args["epochs"] ,verbose = False, start_factor= 0.5)
+        has_scheduler = True
     if train_args["scheduler"] == "CosineAnnealingLR":
         scheduler = CosineAnnealingLR(optimizer=optimizer, T_max=train_args["epochs"], eta_min=1e-8)
-    else:
+        has_scheduler = True
+    if train_args["scheduler"] == "ReduceLROnPlateau":
         scheduler = ReduceLROnPlateau(optimizer, mode="max", factor=0.5, patience = 5)
+        has_scheduler = True
     criterion = nn.BCELoss()
 
     best_mce = 10e8
@@ -104,7 +108,7 @@ def train(model, trainloader, valloader, train_args):
         train_f1_score = metrics.f1_score(all_labels, all_predictions)
         val_mce_loss, val_roc_auc_score, val_accuracy,  val_precision, val_recall, val_f1_score = validate(model, valloader,train_args)
 
-        if val_mce_loss <= best_mce and val_roc_auc_score >= best_roc_auc:
+        if take_last_model or (val_mce_loss <= best_mce and val_roc_auc_score >= best_roc_auc):
             best_mce = val_mce_loss
             best_mce_model = copy.deepcopy(model)
             best_epoch = epoch
@@ -113,9 +117,9 @@ def train(model, trainloader, valloader, train_args):
         print(f"Epoch {epoch} | \t train loss:  {train_mce:.4f}, train roc auc: {train_roc_auc_score:.4f}, train accuracy: {train_accuracy:.4f}, train precision: {train_precision:.4f}, train recall: {train_recall:.4f}, train f1 score: {train_f1_score:.4f} | \
               \n\t val loss: {val_mce_loss:.4f}, val roc auc: {val_roc_auc_score:.4f}, val accuracy: {val_accuracy:.4f}, val precision: {val_precision:.4f}, val recall: {val_recall:.4f}, val f1 score: {val_f1_score:.4f} ", flush=True)
         
-        if train_args["scheduler"] != "ReduceLROnPlateau":
+        if has_scheduler and train_args["scheduler"] != "ReduceLROnPlateau":
             scheduler.step()
-        else:
+        elif has_scheduler:
             scheduler.step(val_roc_auc_score)
 
     result_dict["mce"] = best_mce
